@@ -18,7 +18,7 @@ export const TaskItem = ({ task }: TaskItemProps) => {
     return (
       <div className="p-4 rounded-xl border border-dashed border-rose-300 bg-rose-50/50 dark:bg-rose-950/20 dark:border-rose-800 flex items-center justify-between text-rose-700 dark:text-rose-300 animate-pulse">
         <span className="text-sm font-medium">
-          ⏳ Завдання «{task.title}» буде видалено...
+          Завдання «{task.title}» буде видалено...
         </span>
         <button
           onClick={() => undoDelete(task.id)}

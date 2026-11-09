@@ -75,7 +75,6 @@ export const Toast = () => {
           </button>
         </div>
 
-        {/* Прогрес-бар таймера */}
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
           <div
             className="h-full bg-white/80 transition-all ease-linear"
