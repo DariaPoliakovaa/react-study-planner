@@ -21,7 +21,6 @@ export const TaskFilters = ({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-4">
-      {/* Пошуковий інпут (Додаткове завдання №1) */}
       <div>
         <input
           type="text"
@@ -32,7 +31,6 @@ export const TaskFilters = ({
         />
       </div>
 
-      {/* Кнопки фільтрів */}
       <div className="flex gap-2">
         {filterOptions.map((option) => (
           <button
