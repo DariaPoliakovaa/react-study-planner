@@ -69,7 +69,6 @@ export const TaskItem = ({ task, onToggle, onDelete }: TaskItemProps) => {
           className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer text-sm"
           title="Видалити завдання"
         >
-          🗑️
         </button>
       </div>
     </div>
