@@ -1,15 +1,18 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect } from 'react';
+import type { FormEvent } from 'react';
 import type { Priority } from '../types/task';
 import { useTaskContext } from '../hooks/useTaskContext';
 
 export const TaskForm = () => {
-  const { addTask, updateTask, editingTask, setEditingTask } = useTaskContext();
+  const { addTask, updateTask, editingTask, setEditingTask, isCreating, busyTaskIds } =
+    useTaskContext();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     if (editingTask) {
@@ -18,6 +21,7 @@ export const TaskForm = () => {
       setCategory(editingTask.category);
       setPriority(editingTask.priority);
       setError('');
+      setSuccessMessage('');
     } else {
       setTitle('');
       setDescription('');
@@ -26,7 +30,16 @@ export const TaskForm = () => {
     }
   }, [editingTask]);
 
-  const handleSubmit = (e: FormEvent) => {
+  useEffect(() => {
+    if (!successMessage) return;
+    const timer = setTimeout(() => setSuccessMessage(''), 3000);
+    return () => clearTimeout(timer);
+  }, [successMessage]);
+
+  const isSubmitting =
+    isCreating || (editingTask ? busyTaskIds.includes(editingTask.id) : false);
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     if (!title.trim()) {
@@ -35,25 +48,29 @@ export const TaskForm = () => {
     }
 
     if (editingTask) {
-      updateTask({
-        ...editingTask,
+      await updateTask(editingTask.id, {
         title: title.trim(),
         description: description.trim(),
-        category: category.trim() || 'Загальне',
+        category: category.trim() || 'General',
         priority,
       });
     } else {
-      addTask({
+      const created = await addTask({
         title: title.trim(),
         description: description.trim(),
-        category: category.trim() || 'Загальне',
+        category: category.trim() || 'General',
         priority,
       });
-      setTitle('');
-      setDescription('');
-      setCategory('');
-      setPriority('medium');
+
+      if (created) {
+        setTitle('');
+        setDescription('');
+        setCategory('');
+        setPriority('medium');
+        setSuccessMessage('Завдання успішно додано до списку!');
+      }
     }
+
     setError('');
   };
 
@@ -83,6 +100,12 @@ export const TaskForm = () => {
         </div>
       )}
 
+      {successMessage && (
+        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-sm rounded-lg">
+          ✓ {successMessage}
+        </div>
+      )}
+
       <div className="space-y-3">
         <div>
           <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
@@ -90,13 +113,14 @@ export const TaskForm = () => {
           </label>
           <input
             type="text"
-            placeholder="Наприклад: Опрацювати useContext"
+            placeholder="Наприклад: Вивчити Repository Pattern"
             value={title}
+            disabled={isSubmitting}
             onChange={(e) => {
               setTitle(e.target.value);
               if (error) setError('');
             }}
-            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm disabled:opacity-60"
           />
         </div>
 
@@ -108,8 +132,9 @@ export const TaskForm = () => {
             rows={2}
             placeholder="Короткий опис завдання..."
             value={description}
+            disabled={isSubmitting}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm disabled:opacity-60"
           />
         </div>
 
@@ -122,8 +147,9 @@ export const TaskForm = () => {
               type="text"
               placeholder="Наприклад: React"
               value={category}
+              disabled={isSubmitting}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm disabled:opacity-60"
             />
           </div>
 
@@ -133,8 +159,9 @@ export const TaskForm = () => {
             </label>
             <select
               value={priority}
+              disabled={isSubmitting}
               onChange={(e) => setPriority(e.target.value as Priority)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm disabled:opacity-60"
             >
               <option value="low">Низький (Low)</option>
               <option value="medium">Середній (Medium)</option>
@@ -146,9 +173,14 @@ export const TaskForm = () => {
 
       <button
         type="submit"
-        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-lg transition-colors cursor-pointer text-sm"
+        disabled={isSubmitting}
+        className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-medium py-2.5 rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed text-sm"
       >
-        {editingTask ? 'Зберегти зміни' : 'Додати завдання'}
+        {isSubmitting
+          ? 'Збереження...'
+          : editingTask
+          ? 'Зберегти зміни'
+          : 'Додати завдання'}
       </button>
     </form>
   );

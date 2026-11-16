@@ -50,30 +50,15 @@ export const Toast = () => {
           typeStyles[toast.type]
         }`}
       >
-        <div className="flex items-center gap-2 text-sm font-medium pr-2">
-          <span>{toast.message}</span>
-        </div>
+        <div className="text-sm font-medium pr-2">{toast.message}</div>
 
-        <div className="flex items-center gap-2">
-          {toast.onUndo && (
-            <button
-              onClick={() => {
-                toast.onUndo?.();
-                hideToast();
-              }}
-              className="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer border border-white/30 whitespace-nowrap"
-            >
-              Скасувати
-            </button>
-          )}
-          <button
-            onClick={hideToast}
-            className="text-white/70 hover:text-white p-1 text-xs transition-colors cursor-pointer"
-            title="Закрити"
-          >
-            ✕
-          </button>
-        </div>
+        <button
+          onClick={hideToast}
+          className="text-white/70 hover:text-white p-1 text-xs transition-colors cursor-pointer"
+          title="Закрити"
+        >
+          ✕
+        </button>
 
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
           <div
