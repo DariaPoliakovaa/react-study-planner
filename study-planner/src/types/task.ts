@@ -7,26 +7,45 @@ export interface Task {
   completed: boolean;
   priority: Priority;
   category: string;
-  isPendingDelete?: boolean;
+  isClientOnly?: boolean; 
 }
 
 export type FilterStatus = 'all' | 'active' | 'completed';
 
-export type TaskAction =
-  | { type: 'SET_TASKS'; payload: Task[] }
-  | { type: 'ADD_TASK'; payload: Omit<Task, 'id' | 'completed'> }
-  | { type: 'UPDATE_TASK'; payload: Task }
-  | { type: 'TOGGLE_TASK'; payload: number }
-  | { type: 'REQUEST_DELETE'; payload: number }
-  | { type: 'CONFIRM_DELETE'; payload: number }
-  | { type: 'UNDO_DELETE'; payload: number }
-  | { type: 'CLEAR_COMPLETED' }
-  | { type: 'RESET_TASKS'; payload: Task[] };
+export interface ApiTodo {
+  id: number;
+  todo: string;
+  completed: boolean;
+  userId: number;
+}
+
+export interface TodosResponse {
+  todos: ApiTodo[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+export interface PaginatedTasks {
+  tasks: Task[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+export type CreateTaskInput = Omit<Task, 'id' | 'completed' | 'isClientOnly'>;
+
+export interface UpdateTaskInput {
+  title?: string;
+  description?: string;
+  completed?: boolean;
+  priority?: Priority;
+  category?: string;
+}
 
 export interface ToastState {
   id: number;
   message: string;
   type: 'success' | 'info' | 'warning' | 'error';
   duration?: number;
-  onUndo?: () => void;
 }
