@@ -1,163 +1,222 @@
-import { createContext, useReducer, useEffect, useState, useRef } from 'react';
+import { createContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import type { Task, FilterStatus, ToastState } from '../types/task';
-import { taskReducer } from '../reducers/taskReducer';
-import { initialTasks } from '../data/initialTasks';
+import type {
+  CreateTaskInput,
+  FilterStatus,
+  Task,
+  ToastState,
+  UpdateTaskInput,
+} from '../types/task';
+import { taskRepository } from '../repositories/taskRepository';
+import { ApiError } from '../api/httpClient';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useDebounce } from '../hooks/useDebounce';
 
-const LOCAL_STORAGE_KEY = 'study-planner-tasks-v1';
+export const PAGE_LIMIT = 10;
 
 interface TaskContextType {
+
   tasks: Task[];
   filteredTasks: Task[];
+  totalServerTasks: number;
+  isLoading: boolean;
+  error: string | null;
+  isCreating: boolean;
+  busyTaskIds: number[];
+
+  page: number;
+  totalPages: number;
+  setPage: (page: number) => void;
   filter: FilterStatus;
   setFilter: (filter: FilterStatus) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   editingTask: Task | null;
   setEditingTask: (task: Task | null) => void;
+  selectedTask: Task | null;
+  setSelectedTask: (task: Task | null) => void;
   toast: ToastState | null;
-  showToast: (message: string, type: ToastState['type'], duration?: number, onUndo?: () => void) => void;
   hideToast: () => void;
-  addTask: (newTask: Omit<Task, 'id' | 'completed'>) => void;
-  updateTask: (task: Task) => void;
-  toggleTask: (id: number) => void;
-  requestDelete: (id: number) => void;
-  undoDelete: (id: number) => void;
-  clearCompleted: () => void;
-  resetTasks: () => void;
+
+  retryFetch: () => void;
+  addTask: (input: CreateTaskInput) => Promise<boolean>;
+  updateTask: (id: number, input: UpdateTaskInput) => Promise<boolean>;
+  toggleTask: (task: Task) => Promise<void>;
+  deleteTask: (task: Task) => Promise<void>;
+
   stats: {
-    total: number;
-    completed: number;
-    uncompleted: number;
+    totalOnPage: number;
+    completedOnPage: number;
+    uncompletedOnPage: number;
   };
 }
 
 export const TaskContext = createContext<TaskContextType | undefined>(undefined);
 
-const getInitialTasks = (): Task[] => {
-  try {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!saved) return initialTasks;
-    const parsed = JSON.parse(saved);
-    return Array.isArray(parsed) ? parsed : initialTasks;
-  } catch (error) {
-    console.error('Помилка завантаження завдань з localStorage:', error);
-    return initialTasks;
-  }
-};
-
 export const TaskProvider = ({ children }: { children: ReactNode }) => {
-  const [tasks, dispatch] = useReducer(taskReducer, [], getInitialTasks);
+
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [totalServerTasks, setTotalServerTasks] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [busyTaskIds, setBusyTaskIds] = useState<number[]>([]);
+  const [reloadCounter, setReloadCounter] = useState(0);
+
+  const [page, setPage] = useState(1);
   const [filter, setFilter] = useLocalStorage<FilterStatus>('study-planner-filter', 'all');
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 400);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
-
-const pendingTimersRef = useRef<{ [key: number]: ReturnType<typeof setTimeout> }>({});
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(tasks));
-    } catch (error) {
-      console.error('Помилка збереження завдань у localStorage:', error);
-    }
-  }, [tasks]);
-
-  const uncompletedCount = tasks.filter((t) => !t.completed && !t.isPendingDelete).length;
-  useEffect(() => {
-    document.title = uncompletedCount > 0 
-      ? `Study Planner (${uncompletedCount} active)` 
-      : 'Study Planner';
-  }, [uncompletedCount]);
-
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === LOCAL_STORAGE_KEY && e.newValue) {
-        try {
-          const newTasks = JSON.parse(e.newValue);
-          if (Array.isArray(newTasks)) {
-            dispatch({ type: 'SET_TASKS', payload: newTasks });
-          }
-        } catch (err) {
-          console.error('Помилка синхронізації між вкладками:', err);
-        }
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
 
   const showToast = (
     message: string,
     type: ToastState['type'] = 'info',
-    duration = 3000,
-    onUndo?: () => void
+    duration = 3000
   ) => {
-    setToast({ id: Date.now(), message, type, duration, onUndo });
+    setToast({ id: Date.now(), message, type, duration });
   };
 
   const hideToast = () => setToast(null);
 
-  const addTask = (newTaskData: Omit<Task, 'id' | 'completed'>) => {
-    dispatch({ type: 'ADD_TASK', payload: newTaskData });
-    showToast('Завдання успішно додано!', 'success');
+  useEffect(() => {
+    const controller = new AbortController();
+    const skip = (page - 1) * PAGE_LIMIT;
+
+    const loadTasks = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const result = await taskRepository.getAll(PAGE_LIMIT, skip, controller.signal);
+        setTasks(result.tasks);
+        setTotalServerTasks(result.total);
+      } catch (err) {
+        if (err instanceof ApiError && err.isAborted) {
+          return;
+        }
+        const message =
+          err instanceof Error ? err.message : 'Не вдалося завантажити список завдань';
+        setError(message);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadTasks();
+
+    return () => {
+      controller.abort();
+    };
+  }, [page, reloadCounter]);
+
+  const retryFetch = () => {
+    setReloadCounter((prev) => prev + 1);
   };
 
-  const updateTask = (task: Task) => {
-    dispatch({ type: 'UPDATE_TASK', payload: task });
-    setEditingTask(null);
-    showToast('Завдання оновлено!', 'info');
-  };
+  const uncompletedOnPage = tasks.filter((t) => !t.completed).length;
+  useEffect(() => {
+    document.title =
+      uncompletedOnPage > 0
+        ? `Study Planner (${uncompletedOnPage} active)`
+        : 'Study Planner';
+  }, [uncompletedOnPage]);
 
-  const toggleTask = (id: number) => {
-    dispatch({ type: 'TOGGLE_TASK', payload: id });
-  };
-
-  const requestDelete = (id: number) => {
-    const taskToDelete = tasks.find((t) => t.id === id);
-    if (!taskToDelete) return;
-
-    dispatch({ type: 'REQUEST_DELETE', payload: id });
-
-    if (pendingTimersRef.current[id]) {
-      clearTimeout(pendingTimersRef.current[id]);
+  const addTask = async (input: CreateTaskInput): Promise<boolean> => {
+    setIsCreating(true);
+    try {
+      const created = await taskRepository.create(input);
+      setTasks((prev) => [created, ...prev]);
+      setTotalServerTasks((prev) => prev + 1);
+      showToast('Завдання успішно створено на сервері!', 'success');
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Помилка створення завдання';
+      showToast(message, 'error');
+      return false;
+    } finally {
+      setIsCreating(false);
     }
-
-    const timer = setTimeout(() => {
-      dispatch({ type: 'CONFIRM_DELETE', payload: id });
-      delete pendingTimersRef.current[id];
-      showToast('Завдання видалено остаточно', 'warning');
-    }, 5000);
-
-    pendingTimersRef.current[id] = timer;
-
-    showToast(
-      `«${taskToDelete.title.slice(0, 20)}...» буде видалено`,
-      'warning',
-      5000,
-      () => undoDelete(id)
-    );
   };
 
-  const undoDelete = (id: number) => {
-    if (pendingTimersRef.current[id]) {
-      clearTimeout(pendingTimersRef.current[id]);
-      delete pendingTimersRef.current[id];
+  const updateTask = async (id: number, input: UpdateTaskInput): Promise<boolean> => {
+    const target = tasks.find((t) => t.id === id);
+    if (!target) return false;
+
+    setBusyTaskIds((prev) => [...prev, id]);
+    try {
+      await taskRepository.update(id, input, target.isClientOnly);
+      setTasks((prev) =>
+        prev.map((task) => (task.id === id ? { ...task, ...input } : task))
+      );
+      if (selectedTask?.id === id) {
+        setSelectedTask((prev) => (prev ? { ...prev, ...input } : null));
+      }
+      setEditingTask(null);
+      showToast('Завдання успішно оновлено!', 'success');
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Помилка оновлення завдання';
+      showToast(message, 'error');
+      return false;
+    } finally {
+      setBusyTaskIds((prev) => prev.filter((itemId) => itemId !== id));
     }
-    dispatch({ type: 'UNDO_DELETE', payload: id });
-    showToast('Видалення скасовано', 'info');
   };
 
-  const clearCompleted = () => {
-    dispatch({ type: 'CLEAR_COMPLETED' });
-    showToast('Виконані завдання очищено', 'info');
+  const toggleTask = async (task: Task): Promise<void> => {
+    const nextCompleted = !task.completed;
+    setBusyTaskIds((prev) => [...prev, task.id]);
+
+    try {
+      await taskRepository.update(
+        task.id,
+        { completed: nextCompleted },
+        task.isClientOnly
+      );
+      setTasks((prev) =>
+        prev.map((item) =>
+          item.id === task.id ? { ...item, completed: nextCompleted } : item
+        )
+      );
+      if (selectedTask?.id === task.id) {
+        setSelectedTask((prev) => (prev ? { ...prev, completed: nextCompleted } : null));
+      }
+      showToast(
+        nextCompleted ? 'Позначено як виконане' : 'Повернуто в роботу',
+        'info'
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не вдалося змінити статус';
+      showToast(message, 'error');
+    } finally {
+      setBusyTaskIds((prev) => prev.filter((itemId) => itemId !== task.id));
+    }
   };
 
-  const resetTasks = () => {
-    dispatch({ type: 'RESET_TASKS', payload: initialTasks });
-    showToast('Дані скинуто до початкових', 'info');
+  const deleteTask = async (task: Task): Promise<void> => {
+    setBusyTaskIds((prev) => [...prev, task.id]);
+    try {
+      await taskRepository.delete(task.id, task.isClientOnly);
+      setTasks((prev) => prev.filter((item) => item.id !== task.id));
+      setTotalServerTasks((prev) => Math.max(0, prev - 1));
+      if (selectedTask?.id === task.id) {
+        setSelectedTask(null);
+      }
+      if (editingTask?.id === task.id) {
+        setEditingTask(null);
+      }
+      showToast('Завдання видалено', 'warning');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Помилка видалення завдання';
+      showToast(message, 'error');
+    } finally {
+      setBusyTaskIds((prev) => prev.filter((itemId) => itemId !== task.id));
+    }
   };
 
   const filteredTasks = tasks.filter((task) => {
@@ -170,15 +229,17 @@ const pendingTimersRef = useRef<{ [key: number]: ReturnType<typeof setTimeout> }
 
     const matchesSearch = task.title
       .toLowerCase()
-      .includes(searchQuery.toLowerCase());
+      .includes(debouncedSearch.toLowerCase());
 
     return matchesFilter && matchesSearch;
   });
 
+  const totalPages = Math.max(1, Math.ceil(totalServerTasks / PAGE_LIMIT));
+
   const stats = {
-    total: tasks.filter((t) => !t.isPendingDelete).length,
-    completed: tasks.filter((t) => t.completed && !t.isPendingDelete).length,
-    uncompleted: tasks.filter((t) => !t.completed && !t.isPendingDelete).length,
+    totalOnPage: tasks.length,
+    completedOnPage: tasks.filter((t) => t.completed).length,
+    uncompletedOnPage,
   };
 
   return (
@@ -186,22 +247,29 @@ const pendingTimersRef = useRef<{ [key: number]: ReturnType<typeof setTimeout> }
       value={{
         tasks,
         filteredTasks,
+        totalServerTasks,
+        isLoading,
+        error,
+        isCreating,
+        busyTaskIds,
+        page,
+        totalPages,
+        setPage,
         filter,
         setFilter,
         searchQuery,
         setSearchQuery,
         editingTask,
         setEditingTask,
+        selectedTask,
+        setSelectedTask,
         toast,
-        showToast,
         hideToast,
+        retryFetch,
         addTask,
         updateTask,
         toggleTask,
-        requestDelete,
-        undoDelete,
-        clearCompleted,
-        resetTasks,
+        deleteTask,
         stats,
       }}
     >
