@@ -8,7 +8,14 @@ import type {
   UpdateTaskInput,
 } from '../types/task';
 
-function toTask(apiTodo: ApiTodo, clientMeta?: Partial<CreateTaskInput>): Task {
+interface ClientTaskMeta extends Partial<CreateTaskInput> {
+  createdBy?: string;
+  createdAt?: string;
+}
+
+function toTask(apiTodo: ApiTodo, clientMeta?: ClientTaskMeta): Task {
+  const fallbackDate = new Date(Date.UTC(2026, 10, (apiTodo.id % 28) + 1)).toISOString();
+
   return {
     id: apiTodo.id,
     title: apiTodo.todo,
@@ -16,11 +23,12 @@ function toTask(apiTodo: ApiTodo, clientMeta?: Partial<CreateTaskInput>): Task {
     completed: apiTodo.completed,
     priority: clientMeta?.priority ?? 'medium',
     category: clientMeta?.category ?? 'General',
+    createdBy: clientMeta?.createdBy ?? `User #${apiTodo.userId}`,
+    createdAt: clientMeta?.createdAt ?? fallbackDate,
   };
 }
 
 export const taskRepository = {
-
   async getAll(limit = 10, skip = 0, signal?: AbortSignal): Promise<PaginatedTasks> {
     const data = await httpClient.get<TodosResponse>(
       `/todos?limit=${limit}&skip=${skip}`,
@@ -40,7 +48,7 @@ export const taskRepository = {
     return toTask(data);
   },
 
-  async create(input: CreateTaskInput): Promise<Task> {
+  async create(input: CreateTaskInput, authorUsername = 'Student'): Promise<Task> {
     const payload = {
       todo: input.title,
       completed: false,
@@ -50,13 +58,21 @@ export const taskRepository = {
     const created = await httpClient.post<ApiTodo, typeof payload>('/todos/add', payload);
 
     return {
-      ...toTask(created, input),
+      ...toTask(created, {
+        ...input,
+        createdBy: authorUsername,
+        createdAt: new Date().toISOString(),
+      }),
       id: Date.now(),
       isClientOnly: true,
     };
   },
 
-  async update(id: number, input: UpdateTaskInput, isClientOnly = false): Promise<Partial<Task>> {
+  async update(
+    id: number,
+    input: UpdateTaskInput,
+    isClientOnly = false
+  ): Promise<Partial<Task>> {
     if (!isClientOnly) {
       const apiPayload: { todo?: string; completed?: boolean } = {};
       if (input.title !== undefined) apiPayload.todo = input.title;

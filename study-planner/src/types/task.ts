@@ -7,10 +7,13 @@ export interface Task {
   completed: boolean;
   priority: Priority;
   category: string;
-  isClientOnly?: boolean; 
+  createdBy: string;
+  createdAt: string;
+  isClientOnly?: boolean;
 }
 
 export type FilterStatus = 'all' | 'active' | 'completed';
+export type PriorityFilter = 'all' | Priority;
 
 export interface ApiTodo {
   id: number;
@@ -33,7 +36,10 @@ export interface PaginatedTasks {
   limit: number;
 }
 
-export type CreateTaskInput = Omit<Task, 'id' | 'completed' | 'isClientOnly'>;
+export type CreateTaskInput = Omit<
+  Task,
+  'id' | 'completed' | 'createdBy' | 'createdAt' | 'isClientOnly'
+>;
 
 export interface UpdateTaskInput {
   title?: string;
