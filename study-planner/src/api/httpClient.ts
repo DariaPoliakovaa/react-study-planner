@@ -1,3 +1,5 @@
+import { authStorage } from './authStorage';
+
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://dummyjson.com';
 
 export class ApiError extends Error {
@@ -39,17 +41,28 @@ function normalizeError(error: unknown, fallbackStatus = 500): ApiError {
   return new ApiError('Виникла невідома помилка під час запиту', fallbackStatus, false);
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${BASE_URL}${endpoint}`;
+interface HttpRequestOptions extends RequestInit {
+  tokenOverride?: string;
+}
 
-  const headers: HeadersInit = {
+async function request<T>(endpoint: string, options: HttpRequestOptions = {}): Promise<T> {
+  const url = `${BASE_URL}${endpoint}`;
+  const { tokenOverride, ...fetchOptions } = options;
+
+  const token = tokenOverride ?? authStorage.getToken();
+
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(fetchOptions.headers as Record<string, string>),
   };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   try {
     const response = await fetch(url, {
-      ...options,
+      ...fetchOptions,
       headers,
     });
 
@@ -58,7 +71,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       try {
         const errorData = await response.json();
         serverMessage = errorData?.message || '';
-      } catch {}
+      } catch {
+        void 0;
+      }
 
       throw new ApiError(
         serverMessage || `Помилка сервера (HTTP ${response.status})`,
@@ -74,8 +89,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const httpClient = {
-  get: <T>(endpoint: string, signal?: AbortSignal) =>
-    request<T>(endpoint, { method: 'GET', signal }),
+  get: <T>(endpoint: string, signal?: AbortSignal, tokenOverride?: string) =>
+    request<T>(endpoint, { method: 'GET', signal, tokenOverride }),
 
   post: <T, B>(endpoint: string, body: B) =>
     request<T>(endpoint, {
