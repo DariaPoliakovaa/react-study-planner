@@ -1,17 +1,45 @@
 import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router';
 import type { Task } from '../types/task';
 import { useTaskContext } from '../hooks/useTaskContext';
+import { useAuthContext } from '../hooks/useAuthContext';
 
 interface TaskItemProps {
   task: Task;
 }
 
 export const TaskItem = ({ task }: TaskItemProps) => {
-  const { toggleTask, deleteTask, setEditingTask, setSelectedTask, busyTaskIds } =
-    useTaskContext();
+  const { toggleTask, deleteTask, busyTaskIds, showToast } = useTaskContext();
+  const { isAuthenticated } = useAuthContext();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isBusy = busyTaskIds.includes(task.id);
+
+  const requireAuth = (actionLabel: string): boolean => {
+    if (!isAuthenticated) {
+      showToast(`Увійдіть у систему, щоб ${actionLabel}`, 'warning');
+      navigate('/login', { state: { from: location } });
+      return false;
+    }
+    return true;
+  };
+
+  const handleToggle = () => {
+    if (!requireAuth('змінювати статус завдання')) return;
+    toggleTask(task);
+  };
+
+  const handleRequestDelete = () => {
+    if (!requireAuth('видаляти завдання')) return;
+    setConfirmDelete(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!requireAuth('видаляти завдання')) return;
+    deleteTask(task);
+  };
 
   const priorityBadge = {
     low: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600',
@@ -36,21 +64,19 @@ export const TaskItem = ({ task }: TaskItemProps) => {
             type="checkbox"
             checked={task.completed}
             disabled={isBusy}
-            onChange={() => toggleTask(task)}
+            onChange={handleToggle}
             className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
           />
 
           <div className="space-y-1">
-            <button
-              type="button"
-              onClick={() => setSelectedTask(task)}
-              className={`text-left font-semibold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer ${
+            <Link
+              to={`/tasks/${task.id}`}
+              className={`inline-block font-semibold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors ${
                 task.completed ? 'line-through text-slate-500 dark:text-slate-400' : ''
               }`}
-              title="Натисніть для перегляду деталей"
             >
               {task.title}
-            </button>
+            </Link>
 
             {task.description && (
               <p
@@ -87,7 +113,7 @@ export const TaskItem = ({ task }: TaskItemProps) => {
               </span>
               <button
                 type="button"
-                onClick={() => deleteTask(task)}
+                onClick={handleConfirmDelete}
                 className="text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 px-2 py-0.5 rounded cursor-pointer"
               >
                 Так
@@ -102,26 +128,20 @@ export const TaskItem = ({ task }: TaskItemProps) => {
             </div>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={() => setSelectedTask(task)}
-                className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer text-sm"
+              <Link
+                to={`/tasks/${task.id}`}
+                className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm"
                 title="Деталі завдання"
-              >Деталі 
-              </button>
+              >
+                Деталі завдання
+              </Link>
               <button
                 type="button"
-                onClick={() => setEditingTask(task)}
-                className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer text-sm"
-                title="Редагувати завдання"
-              >Редагувати 
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
+                onClick={handleRequestDelete}
                 className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer text-sm"
                 title="Видалити завдання"
-              >Видалити 
+              >
+                Видалити завдання
               </button>
             </>
           )}

@@ -1,8 +1,13 @@
+import type { Task } from '../types/task';
 import { useTaskContext } from '../hooks/useTaskContext';
 import { TaskItem } from './TaskItem';
 
-export const TaskList = () => {
-  const { filteredTasks, isLoading, error, retryFetch } = useTaskContext();
+interface TaskListProps {
+  tasks: Task[];
+}
+
+export const TaskList = ({ tasks }: TaskListProps) => {
+  const { isLoading, error, retryFetch } = useTaskContext();
 
   if (isLoading) {
     return (
@@ -23,6 +28,7 @@ export const TaskList = () => {
         </p>
         <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>
         <button
+          type="button"
           onClick={retryFetch}
           className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium transition-colors cursor-pointer"
         >
@@ -32,7 +38,7 @@ export const TaskList = () => {
     );
   }
 
-  if (filteredTasks.length === 0) {
+  if (tasks.length === 0) {
     return (
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-8 text-center text-slate-500 dark:text-slate-400 transition-colors">
         <p className="text-sm font-medium">Завдань не знайдено.</p>
@@ -42,7 +48,7 @@ export const TaskList = () => {
 
   return (
     <div className="space-y-3">
-      {filteredTasks.map((task) => (
+      {tasks.map((task) => (
         <TaskItem key={task.id} task={task} />
       ))}
     </div>

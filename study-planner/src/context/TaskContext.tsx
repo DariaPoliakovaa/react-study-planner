@@ -1,59 +1,19 @@
-import { createContext, useState, useEffect } from 'react';
-import type { ReactNode } from 'react';
+import { useState, useEffect } from 'react';
+import type {ReactNode} from 'react';
 import type {
   CreateTaskInput,
-  FilterStatus,
   Task,
   ToastState,
   UpdateTaskInput,
 } from '../types/task';
 import { taskRepository } from '../repositories/taskRepository';
 import { ApiError } from '../api/httpClient';
-import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useDebounce } from '../hooks/useDebounce';
-
-export const PAGE_LIMIT = 10;
-
-interface TaskContextType {
-
-  tasks: Task[];
-  filteredTasks: Task[];
-  totalServerTasks: number;
-  isLoading: boolean;
-  error: string | null;
-  isCreating: boolean;
-  busyTaskIds: number[];
-
-  page: number;
-  totalPages: number;
-  setPage: (page: number) => void;
-  filter: FilterStatus;
-  setFilter: (filter: FilterStatus) => void;
-  searchQuery: string;
-  setSearchQuery: (query: string) => void;
-  editingTask: Task | null;
-  setEditingTask: (task: Task | null) => void;
-  selectedTask: Task | null;
-  setSelectedTask: (task: Task | null) => void;
-  toast: ToastState | null;
-  hideToast: () => void;
-
-  retryFetch: () => void;
-  addTask: (input: CreateTaskInput) => Promise<boolean>;
-  updateTask: (id: number, input: UpdateTaskInput) => Promise<boolean>;
-  toggleTask: (task: Task) => Promise<void>;
-  deleteTask: (task: Task) => Promise<void>;
-
-  stats: {
-    totalOnPage: number;
-    completedOnPage: number;
-    uncompletedOnPage: number;
-  };
-}
-
-export const TaskContext = createContext<TaskContextType | undefined>(undefined);
+import { useAuthContext } from '../hooks/useAuthContext';
+import { PAGE_LIMIT, TaskContext } from './taskContextDefinition';
 
 export const TaskProvider = ({ children }: { children: ReactNode }) => {
+  const { isAuthenticated, user } = useAuthContext();
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [totalServerTasks, setTotalServerTasks] = useState(0);
@@ -64,11 +24,8 @@ export const TaskProvider = ({ children }: { children: ReactNode }) => {
   const [reloadCounter, setReloadCounter] = useState(0);
 
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useLocalStorage<FilterStatus>('study-planner-filter', 'all');
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 400);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   const showToast = (
@@ -127,12 +84,17 @@ export const TaskProvider = ({ children }: { children: ReactNode }) => {
   }, [uncompletedOnPage]);
 
   const addTask = async (input: CreateTaskInput): Promise<boolean> => {
+    if (!isAuthenticated || !user) {
+      showToast('Авторизуйтеся, щоб створювати завдання', 'warning');
+      return false;
+    }
+
     setIsCreating(true);
     try {
-      const created = await taskRepository.create(input);
+      const created = await taskRepository.create(input, user.username);
       setTasks((prev) => [created, ...prev]);
       setTotalServerTasks((prev) => prev + 1);
-      showToast('Завдання успішно створено на сервері!', 'success');
+      showToast('Завдання успішно створено!', 'success');
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Помилка створення завдання';
@@ -144,19 +106,19 @@ export const TaskProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateTask = async (id: number, input: UpdateTaskInput): Promise<boolean> => {
-    const target = tasks.find((t) => t.id === id);
-    if (!target) return false;
+    if (!isAuthenticated) {
+      showToast('Авторизуйтеся, щоб редагувати завдання', 'warning');
+      return false;
+    }
 
+    const target = tasks.find((t) => t.id === id);
     setBusyTaskIds((prev) => [...prev, id]);
+
     try {
-      await taskRepository.update(id, input, target.isClientOnly);
+      await taskRepository.update(id, input, target?.isClientOnly ?? false);
       setTasks((prev) =>
         prev.map((task) => (task.id === id ? { ...task, ...input } : task))
       );
-      if (selectedTask?.id === id) {
-        setSelectedTask((prev) => (prev ? { ...prev, ...input } : null));
-      }
-      setEditingTask(null);
       showToast('Завдання успішно оновлено!', 'success');
       return true;
     } catch (err) {
@@ -169,6 +131,11 @@ export const TaskProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const toggleTask = async (task: Task): Promise<void> => {
+    if (!isAuthenticated) {
+      showToast('Увійдіть у систему, щоб змінювати статус завдання', 'warning');
+      return;
+    }
+
     const nextCompleted = !task.completed;
     setBusyTaskIds((prev) => [...prev, task.id]);
 
@@ -183,9 +150,6 @@ export const TaskProvider = ({ children }: { children: ReactNode }) => {
           item.id === task.id ? { ...item, completed: nextCompleted } : item
         )
       );
-      if (selectedTask?.id === task.id) {
-        setSelectedTask((prev) => (prev ? { ...prev, completed: nextCompleted } : null));
-      }
       showToast(
         nextCompleted ? 'Позначено як виконане' : 'Повернуто в роботу',
         'info'
@@ -198,41 +162,27 @@ export const TaskProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const deleteTask = async (task: Task): Promise<void> => {
+  const deleteTask = async (task: Task): Promise<boolean> => {
+    if (!isAuthenticated) {
+      showToast('Авторизуйтеся, щоб видаляти завдання', 'warning');
+      return false;
+    }
+
     setBusyTaskIds((prev) => [...prev, task.id]);
     try {
       await taskRepository.delete(task.id, task.isClientOnly);
       setTasks((prev) => prev.filter((item) => item.id !== task.id));
       setTotalServerTasks((prev) => Math.max(0, prev - 1));
-      if (selectedTask?.id === task.id) {
-        setSelectedTask(null);
-      }
-      if (editingTask?.id === task.id) {
-        setEditingTask(null);
-      }
       showToast('Завдання видалено', 'warning');
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Помилка видалення завдання';
       showToast(message, 'error');
+      return false;
     } finally {
       setBusyTaskIds((prev) => prev.filter((itemId) => itemId !== task.id));
     }
   };
-
-  const filteredTasks = tasks.filter((task) => {
-    const matchesFilter =
-      filter === 'all'
-        ? true
-        : filter === 'completed'
-        ? task.completed
-        : !task.completed;
-
-    const matchesSearch = task.title
-      .toLowerCase()
-      .includes(debouncedSearch.toLowerCase());
-
-    return matchesFilter && matchesSearch;
-  });
 
   const totalPages = Math.max(1, Math.ceil(totalServerTasks / PAGE_LIMIT));
 
@@ -246,7 +196,6 @@ export const TaskProvider = ({ children }: { children: ReactNode }) => {
     <TaskContext.Provider
       value={{
         tasks,
-        filteredTasks,
         totalServerTasks,
         isLoading,
         error,
@@ -255,15 +204,11 @@ export const TaskProvider = ({ children }: { children: ReactNode }) => {
         page,
         totalPages,
         setPage,
-        filter,
-        setFilter,
         searchQuery,
         setSearchQuery,
-        editingTask,
-        setEditingTask,
-        selectedTask,
-        setSelectedTask,
+        debouncedSearch,
         toast,
+        showToast,
         hideToast,
         retryFetch,
         addTask,
