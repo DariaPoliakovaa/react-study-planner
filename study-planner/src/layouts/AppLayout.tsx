@@ -32,7 +32,7 @@ export const AppLayout = () => {
             to="/tasks"
             className="flex items-center gap-2 text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight"
           >
-            <span>📚 Study Planner</span>
+            <span>Study Planner</span>
           </Link>
 
           <nav aria-label="Головна навігація" className="flex items-center gap-2">
@@ -69,7 +69,7 @@ export const AppLayout = () => {
               className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors cursor-pointer text-base"
               title={theme === 'dark' ? 'Світла тема' : 'Темна тема'}
             >
-              {theme === 'dark' ? '☀️' : '🌙'}
+              {theme === 'dark' ? 'light' : 'dark'}
             </button>
           </nav>
         </div>

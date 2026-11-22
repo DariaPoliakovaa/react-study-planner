@@ -199,7 +199,7 @@ const TaskDetailsView = ({ taskId }: TaskDetailsViewProps) => {
                   }}
                   className="px-3.5 py-2 rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-sm font-medium transition-colors cursor-pointer"
                 >
-                  🗑️ Видалити
+                  Видалити
                 </button>
               )}
             </div>

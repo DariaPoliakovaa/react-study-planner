@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useTaskContext } from '../hooks/useTaskContext';
+import type { ToastState } from '../types/task';
 
-export const Toast = () => {
-  const { toast, hideToast } = useTaskContext();
+interface ToastBannerProps {
+  toast: ToastState;
+  onClose: () => void;
+}
+
+const ToastBanner = ({ toast, onClose }: ToastBannerProps) => {
   const [progress, setProgress] = useState(100);
 
   useEffect(() => {
-    if (!toast) return;
-
     const duration = toast.duration || 3000;
     const intervalTime = 50;
     const step = (intervalTime / duration) * 100;
-
-    setProgress(100);
 
     const progressInterval = setInterval(() => {
       setProgress((prev) => {
@@ -25,16 +26,14 @@ export const Toast = () => {
     }, intervalTime);
 
     const timer = setTimeout(() => {
-      hideToast();
+      onClose();
     }, duration);
 
     return () => {
       clearInterval(progressInterval);
       clearTimeout(timer);
     };
-  }, [toast, hideToast]);
-
-  if (!toast) return null;
+  }, [toast, onClose]);
 
   const typeStyles = {
     success: 'bg-emerald-600 text-white',
@@ -53,7 +52,8 @@ export const Toast = () => {
         <div className="text-sm font-medium pr-2">{toast.message}</div>
 
         <button
-          onClick={hideToast}
+          type="button"
+          onClick={onClose}
           className="text-white/70 hover:text-white p-1 text-xs transition-colors cursor-pointer"
           title="Закрити"
         >
@@ -69,4 +69,12 @@ export const Toast = () => {
       </div>
     </div>
   );
+};
+
+export const Toast = () => {
+  const { toast, hideToast } = useTaskContext();
+
+  if (!toast) return null;
+
+  return <ToastBanner key={toast.id} toast={toast} onClose={hideToast} />;
 };

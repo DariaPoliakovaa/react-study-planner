@@ -1,15 +1,6 @@
-import  { createContext, useEffect } from 'react';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
-
-type Theme = 'light' | 'dark';
-
-interface ThemeContextType {
-  theme: Theme;
-  toggleTheme: () => void;
-}
-
-export const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+import { type Theme, ThemeContext } from './themeContextDefinition';
 
 interface ThemeProviderProps {
   children: ReactNode;
